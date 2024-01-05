@@ -1,158 +1,118 @@
-import { useEffect, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
-import store from "../store";
-import { Link, redirect } from "react-router-dom";
-import axios from "axios";
-import userEvent from "@testing-library/user-event";
+# https://blog.authlib.org/2020/fastapi-google-login
+
+from fastapi import APIRouter, Request, HTTPException, Depends, Header
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from starlette.config import Config
+from authlib.integrations.starlette_client import OAuth, OAuthError
+from passlib.context import CryptContext
+import jwt
+from sqlmodel import Session, select, text, update
+import re
+
+from .. import env
+from ..internal.db import engine
+from ..internal.models import User
+from ..internal.check import get_current_user
+from random import randint
+import smtplib, ssl
+from email.mime.text import MIMEText
 
 
-const Book = () => {
-    let { id } = useParams();
-    // console.log(params)
-    const [isLoading, setIsLoading] = useState(true)
-    const book = useRef({})
-    async function onOpen() {
-
-        // await store.getUser()
-        book.current = await store.fetchBookInfo(id)
-        if (store.sourceNotFound)
-            return
-
-        setIsLoading(false)
-    }
+if env.ENABLE_AUTH:
+    from .. import auth_secrets
 
 
-    const [pdfSource, setPdfSource] = useState('');
-
-    // const handleRequestPdf = async () => {
-    //     // try {
-    //         // const response = await axios.get(`http://localhost:5001/api/book/${book.current.book_id}/file`, {
-    //         //     responseType: 'blob', // Указываем, что ожидаем получить данные в виде Blob,
-    //         //     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-    //         // });
-
-    //         // Создаем URL объект для полученного Blob, чтобы его можно было использовать в iframe
-    //         // const pdfUrl = URL.createObjectURL(new Blob([response.blob()]));
-
-    //         // setPdfSource(pdfUrl);
-    //         // store.user.downloads_left -= 1
-    //     // } catch (error) {
-    //     //     alert('Ошибка')
-    //     //     console.error('Ошибка при выполнении запроса:', error);
-    //     // }
-
-    //     fetch(`http://localhost:5001/api/book/${book.current.book_id}/file`, {
-    //         method: 'GET',
-    //         headers: {
-    //             Authorization: `Bearer ${localStorage.getItem('token')}`
-    //         },
-    //     })
-    //         .then((response) => response.blob())
-    //         .then((blob) => {
-    //             const url = window.URL.createObjectURL(
-    //                 new Blob([blob]),
-    //             );
-    //             setPdfSource(url)
-    //             store.user.downloads_left -= 1
-    //         })
-    // };
-
-    async function handleRequestPdf() {
-        downloadFile(`http://localhost:5001/api/book/${book.current.book_id}/file`, book.current.title + '.pdf')
-    }
-
-    async function handleRequestDjvu() {
-        downloadFile(`http://localhost:5001/api/book/${book.current.book_id}/file`, book.current.title + '.djvu')
-    }
-
-    async function downloadFile(fileUrl, outputLocationPath) {
-        fetch(fileUrl, {
-            method: 'GET',
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`
-            },
-        })
-            .then((response) => response.blob())
-            .then((blob) => {
-                // Create blob link to download
-                const url = window.URL.createObjectURL(
-                    new Blob([blob]),
-                );
-                const link = document.createElement('a');
-                link.href = url;
-                link.setAttribute(
-                    'download',
-                    outputLocationPath,
-                );
-
-                // Append to html link element page
-                document.body.appendChild(link);
-
-                // Start download
-                link.click();
-
-                // Clean up and remove the link
-                link.parentNode.removeChild(link);
-                store.user.downloads_left -= 1
-            });
-    }
 
 
-    function renderButtons() {
-        console.log(store.book)
+    
+    # server.quit()
+
+    security = HTTPBearer()
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")   
+
+    router = APIRouter()
+    redirect_response = RedirectResponse(url="/" if env.PROD else env.PREFIX)
+
+    def get_email_token() -> str:
+        length = 20
+        letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        random_string = ''.join(letters[randint(0, len(letters)-1)] for _ in range(length))
+        return random_string
+
+    def send_verification_email(email: str, token: str):
+        context = ssl.create_default_context()
+        port = 465  # For SSL
+        smtp_server = "smtp.mail.ru"
+        sender_email = "booksryzhkov@mail.ru"  # Enter your address
+        receiver_email = email  # Enter receiver address
+        password = "yRiBzyQ9knsn1GQvXR1A"
+        #yRiBzyQ9knsn1GQvXR1A
+        message = """\
         
-        if (!store.user)
-            return <div>Авторизуйтесь, чтобы скачать</div>
-        if (store.user.downloads_left > 0)
-            return (<button onClick={
-                book.current.format == 'pdf' ? handleRequestPdf : handleRequestDjvu
-            }>Загрузить {book.current.format == 'pdf' ? 'PDF' : 'DJVU'}</button>)
-        return <div>У вас закончились скачивания. Обратитесь к <a href="https://vk.com/iwanryzhkov">владельцу</a></div>
-    }
+        This message is sent from Python."""
+        
+        with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, MIMEText(str(f"Ваша ссылка для подтверждения почты: http://books.ryzhkov.site/verify?token={token}"), 'plain', 'utf-8').as_string())  
+    
+    @router.post("/register")
+    def register(email: str, password: str):
+        def check_email(email):
+            regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+            return re.fullmatch(regex, email) and (email.endswith('.msu.ru') or email.endswith('@msu.ru'))
+
+        # if not check_email(email):
+        #     raise HTTPException(status_code=400, detail='Invalid email')
+        with Session(engine) as session:
+            hashed_password = pwd_context.hash(password)
+            token = get_email_token()
+            session.add(User(email=email, hashed_password=hashed_password, email_token=token))
+            session.commit()
+            send_verification_email(email, token)
+            
+            return {"message": "User registered successfully"}
+
+    @router.post("/verify")
+    def register(token: str):
+        with Session(engine) as session:
+            user = session.exec(select(User).where(User.is_verified == False and User.email_token == token)).all()
+            if not len(user):
+                raise HTTPException(status_code=401)
+            user = user[0]
+            session.exec(update(User).where(User.email_token == token).values(email_token="", is_verified=True))
+            session.commit()
+            
+            return {"message": "Email verified successfully"}
 
 
-    function renderPage() {
-        return (
-            <div>
-                <h1 style={{ marginBottom: 0 }}>{book.current.title}</h1>
-                <div>
+    @router.post("/login")
+    def login(email: str, password: str):
+        # c.execute("SELECT * FROM users WHERE username=?", (username,))
+        # user = c.fetchone()
+        print('hi')
+        with Session(engine) as session:
+            user = session.exec(text(f"""
+                SELECT * FROM user WHERE email = "{email}"
+            """)).mappings().all()[0]
+        if user:
+            if not user.is_verified:
+                raise HTTPException(status_code=403, detail="Not verified")
+            if pwd_context.verify(password, user.hashed_password):
+                token = jwt.encode({'sub': user.email}, 'secret', algorithm='HS256')
+                return {"token": token}
+        raise HTTPException(status_code=401, detail="Invalid username or password")
 
-                    {<a href={'/folder' + book.current.folder}>[parent folder]</a>}
 
-                    {<a style={{ marginLeft: 5 }} href={'/folder' + book.current.folder}>See error?</a>}
-                </div>
-                <br />
+    @router.get("/user")
+    async def get_user(user=Depends(get_current_user)):
+        print(user)
+        return user
 
-                <div>
-                    Author(s): {book.current.authors}
-                </div>
-                <div>
-                    ESBN: {book.current.esbn}
-                </div>
-                <div>
-                    ISBN: {book.current.isbn}
-                </div>
-                <div>
-                    Pages: {book.current.pages}
-                </div>
 
-                <br />
 
-                {renderButtons()}
-                {pdfSource && <iframe src={pdfSource} width="100%" height="500px" />}
-            </div>)
-    }
-
-    useEffect(() => {
-        onOpen()
-    }, [])
-
-    return (
-        <div>
-            {store.sourceNotFound && <Navigate to={"/404"} />}
-            {isLoading ? <>Loaidng...</> : renderPage()
-            }
-        </div>)
-};
-
-export default Book;
+    # Приватные роуты, требующие авторизации
+    @router.get("/private")
+    def private_route(email: str = Depends(get_current_user)):
+        if email:
+            return f"Добро пожаловать, {email}! Это закрытый роут."
