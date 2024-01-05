@@ -18,7 +18,6 @@ from random import randint
 import smtplib, ssl
 from email.mime.text import MIMEText
 
-context = ssl.create_default_context()
 
 if env.ENABLE_AUTH:
     from .. import auth_secrets
@@ -42,6 +41,7 @@ if env.ENABLE_AUTH:
         return random_string
 
     def send_verification_email(email: str, token: str):
+        context = ssl.create_default_context()
         port = 465  # For SSL
         smtp_server = "smtp.mail.ru"
         sender_email = "booksryzhkov@mail.ru"  # Enter your address
