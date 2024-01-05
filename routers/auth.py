@@ -15,7 +15,7 @@ from ..internal.db import engine
 from ..internal.models import User
 from ..internal.check import get_current_user
 from random import randint
-import smtplib
+import smtplib, ssl
 from email.mime.text import MIMEText
 
 
