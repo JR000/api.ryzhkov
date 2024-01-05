@@ -54,7 +54,7 @@ if env.ENABLE_AUTH:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
             server.login(sender_email, password)
-            server.sendmail(sender_email, receiver_email, MIMEText(str(f"Ваша ссылка для подтверждения почты: http://boooks.ryzhkov.site/verify?token={token}"), 'plain', 'utf-8').as_string())  
+            server.sendmail(sender_email, receiver_email, MIMEText(str(f"Ваша ссылка для подтверждения почты: http://books.ryzhkov.site/verify?token={token}"), 'plain', 'utf-8').as_string())  
     
     @router.post("/register")
     def register(email: str, password: str):
