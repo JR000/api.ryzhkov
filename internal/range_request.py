@@ -58,11 +58,14 @@ def range_requests_response(request: Request, file_path: str, content_type: str)
         return ''.join(random.choice(letters) for i in range(length))
 
     # ftp = FTP(host='test.rebex.net', user="demo", passwd="password", timeout=30) 
-    ftp = FTP(host='85.236.190.136', user="admin", passwd="Rkfdbfnehf3", timeout=30)
+    ftp = FTP(host='85.236.190.136', user="admin", passwd="Rkfdbfnehf", timeout=30)
     ftp.set_pasv(False)
-    ftp.cwd(ftp_folder)
+    ftp.cwd('/Библиотека/книги/!' + ftp_folder)
     filename = randomword(24)
     # file_path = 'mail-editor.png'
+    print(f"'${ftp_filename}'")
+    if ftp_filename.startswith(' '):
+        ftp_filename = ftp_filename[1:]
     with open(filename, "wb") as file:
         # Command for Downloading the file "RETR filename"
         ftp.retrbinary(f"RETR {ftp_filename}", file.write)
