@@ -41,19 +41,20 @@ if env.ENABLE_AUTH:
         return random_string
 
     def send_verification_email(email: str, token: str):
-        server = smtplib.SMTP("smtp.yandex.ru", 587)
-        server.ehlo()
-        server.starttls()
-        server.login("iwanryzhkov@yandex.ru", "Phrm8xh0dPzdAGGKMnTdXhE3jHzFHMZSlKk4ZU9RLKmM7yJk0VVWakeCDGSG2E3Vg2kUTh8tNCx14INp3O42hRYi4mTe7va5ziRz")
-        msg = "\r\n".join([
-            f"From: me blyat",
-            f"To: {email}",
-            "Subject: ",
-            "",
-            str(f"Ваша ссылка для подтверждения почты: http://localhost:3000/verify?token={token}")
-        ])
-        msg = MIMEText('\n {}'.format(msg).encode('utf-8'), _charset='utf-8')
-        server.sendmail("iwanryzhkov@ya.ru", email, msg.as_string() )    
+        port = 465  # For SSL
+        smtp_server = "smtp.mail.ru"
+        sender_email = "booksryzhkov@mail.ru"  # Enter your address
+        receiver_email = email  # Enter receiver address
+        password = "yRiBzyQ9knsn1GQvXR1A"
+        #yRiBzyQ9knsn1GQvXR1A
+        message = """\
+        
+        This message is sent from Python."""
+        
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, MIMEText(str(f"Ваша ссылка для подтверждения почты: http://localhost:3000/verify?token={token}"), 'plain', 'utf-8').as_string())  
     
     @router.post("/register")
     def register(email: str, password: str):
